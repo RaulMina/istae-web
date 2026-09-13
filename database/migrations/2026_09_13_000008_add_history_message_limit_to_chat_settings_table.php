@@ -1,0 +1,22 @@
+<?php
+
+use Illuminate\Database\Migrations\Migration;
+use Illuminate\Database\Schema\Blueprint;
+use Illuminate\Support\Facades\Schema;
+
+return new class extends Migration
+{
+    public function up(): void
+    {
+        Schema::table('chat_settings', function (Blueprint $table) {
+            $table->unsignedInteger('history_message_limit')->default(6)->after('scrape_frequency_hours');
+        });
+    }
+
+    public function down(): void
+    {
+        Schema::table('chat_settings', function (Blueprint $table) {
+            $table->dropColumn('history_message_limit');
+        });
+    }
+};

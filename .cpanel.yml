@@ -1,0 +1,20 @@
+---
+deployment:
+  tasks:
+    - export DEPLOYPATH=/home/istaeedu/public_html/
+
+    # Copia los archivos del repo al sitio en vivo. No borra nada que no venga en el
+    # repo (no usa --delete), así que .env, storage/logs y archivos subidos por
+    # usuarios (public/uploads, public/assets/chat-knowledge, etc.) quedan intactos.
+    - /bin/cp -R * $DEPLOYPATH
+
+    # PHP confirmado: /usr/local/bin/php (cuenta usa PHP 8.2, symlink de cPanel).
+    # Composer instalado manualmente en el home de la cuenta (el hosting no lo trae
+    # global ni permite exec()/shell_exec() desde PHP web). -d allow_url_fopen=1
+    # porque el php.ini de línea de comandos del hosting lo trae apagado por defecto.
+    - /usr/local/bin/php -d allow_url_fopen=1 /home/istaeedu/composer.phar install --no-dev --optimize-autoloader --working-dir=$DEPLOYPATH
+
+    - /usr/local/bin/php $DEPLOYPATH/artisan migrate --force
+    - /usr/local/bin/php $DEPLOYPATH/artisan config:cache
+    - /usr/local/bin/php $DEPLOYPATH/artisan route:cache
+    - /usr/local/bin/php $DEPLOYPATH/artisan view:cache

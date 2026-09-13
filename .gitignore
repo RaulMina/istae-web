@@ -1,0 +1,35 @@
+/.phpunit.cache
+/node_modules
+/public/build
+/public/hot
+/public/storage
+/storage/*.key
+/vendor
+.env
+.env.backup
+.env.production
+.phpunit.result.cache
+Homestead.json
+Homestead.yaml
+auth.json
+npm-debug.log
+yarn-error.log
+/.fleet
+/.idea
+/.vscode
+
+# Claude Code local session config (not part of the app)
+/.claude
+
+# Sensitive/local-only files that must never be committed
+env_respaldo
+check-composer.php
+
+
+# Original downloaded assets zip already copied into public/assets/
+/assets
+
+# Runtime-uploaded content (grows over time, not source code)
+/public/uploads
+/public/assets/chat-knowledge
+/public/assets/img/chat
