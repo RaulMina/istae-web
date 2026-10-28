@@ -1,0 +1,94 @@
+# Despliegue continuo a cPanel.
+# En cada push a main (o manualmente desde la pestaña Actions) le pide a cPanel, vía UAPI por HTTPS:
+#   1. VersionControl/update            -> hacer pull de main en /home/istaeedu/repositories/istae-web
+#   2. VersionControlDeployment/create  -> ejecutar las tareas de .cpanel.yml
+# y espera a que el despliegue termine para marcar el job como exitoso o fallido.
+#
+# Secret requerido (Settings > Secrets and variables > Actions):
+#   CPANEL_API_TOKEN  token creado en cPanel > Security > Manage API Tokens
+
+name: Deploy to cPanel
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Nunca dos despliegues a la vez; si llega otro push, espera a que termine el actual.
+concurrency:
+  group: cpanel-production
+  cancel-in-progress: false
+
+env:
+  CPANEL_HOST: optimus.myhostingdomain.net
+  CPANEL_USER: istaeedu
+  REPO_ROOT: /home/istaeedu/repositories/istae-web
+  BRANCH: main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Pull de GitHub en cPanel
+        env:
+          CPANEL_API_TOKEN: ${{ secrets.CPANEL_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          response=$(curl -sS --fail-with-body \
+            -H "Authorization: cpanel ${CPANEL_USER}:${CPANEL_API_TOKEN}" \
+            --data-urlencode "repository_root=${REPO_ROOT}" \
+            --data-urlencode "branch=${BRANCH}" \
+            "https://${CPANEL_HOST}:2083/execute/VersionControl/update")
+          echo "$response" | jq '{status, errors, head: .data.last_update.identifier}'
+          [ "$(echo "$response" | jq -r '.status')" = "1" ] || { echo "::error::cPanel no pudo actualizar el repositorio"; exit 1; }
+
+          deployed=$(echo "$response" | jq -r '.data.last_update.identifier // empty')
+          if [ -n "$deployed" ] && [ "$deployed" != "${GITHUB_SHA}" ]; then
+            echo "::warning::cPanel quedó en ${deployed}, pero este workflow es de ${GITHUB_SHA} (probablemente llegó un push más nuevo)."
+          fi
+
+      - name: Desplegar (.cpanel.yml)
+        env:
+          CPANEL_API_TOKEN: ${{ secrets.CPANEL_API_TOKEN }}
+        run: |
+          set -euo pipefail
+          auth="Authorization: cpanel ${CPANEL_USER}:${CPANEL_API_TOKEN}"
+          base="https://${CPANEL_HOST}:2083/execute"
+
+          response=$(curl -sS --fail-with-body -H "$auth" \
+            --data-urlencode "repository_root=${REPO_ROOT}" \
+            "${base}/VersionControlDeployment/create")
+          [ "$(echo "$response" | jq -r '.status')" = "1" ] || { echo "$response" | jq '.errors'; echo "::error::cPanel no aceptó el despliegue"; exit 1; }
+
+          deploy_id=$(echo "$response" | jq -r '.data.deploy_id')
+          echo "Despliegue en cola: deploy_id=${deploy_id}"
+
+          # Esperar hasta 15 minutos (composer install puede tardar).
+          for i in $(seq 1 90); do
+            sleep 10
+            status=$(curl -sS --fail-with-body -H "$auth" "${base}/VersionControlDeployment/retrieve" \
+              | jq --arg id "$deploy_id" '.data[] | select((.deploy_id|tostring) == $id)')
+            echo "[$i] $(echo "$status" | jq -c '.timestamps')"
+
+            done_ok=$(echo "$status" | jq -r '.timestamps.succeeded // empty')
+            done_err=$(echo "$status" | jq -r '.timestamps.failed // .timestamps.canceled // empty')
+            [ -z "$done_ok" ] && [ -z "$done_err" ] && continue
+
+            # Mostrar el log del despliegue (las tareas de .cpanel.yml) en la salida del job.
+            log_path=$(echo "$status" | jq -r '.log_path')
+            curl -sS -H "$auth" -G \
+              --data-urlencode "dir=$(dirname "$log_path")" \
+              --data-urlencode "file=$(basename "$log_path")" \
+              "${base}/Fileman/get_file_content" | jq -r '.data.content // "(no se pudo leer el log)"'
+
+            if [ -n "$done_ok" ]; then
+              echo "Despliegue completado."
+              exit 0
+            fi
+            echo "::error::El despliegue falló (log en el servidor: ${log_path})."
+            exit 1
+          done
+
+          echo "::error::El despliegue no terminó en 15 minutos (deploy_id=${deploy_id})."
+          exit 1
