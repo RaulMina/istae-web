@@ -9,7 +9,12 @@ deployment:
     # Excluye .git y .github; no borra nada que no venga en el repo, asi que .env,
     # storage/logs y archivos subidos por usuarios (public/uploads,
     # public/assets/chat-knowledge, etc.) quedan intactos.
-    - /bin/tar --exclude=.git --exclude=.github -cf - . | /bin/tar -xf - -C $DEPLOYPATH
+    # --no-overwrite-dir: sin esto tar le aplica a public_html los permisos de la raíz
+    # del repo (0700, porque ~/repositories es privado) y Apache deja de poder leer
+    # .htaccess -> 403 "Server unable to read htaccess file" en todo el sitio.
+    - /bin/tar --exclude=.git --exclude=.github -cf - . | /bin/tar -xf - --no-overwrite-dir -C $DEPLOYPATH
+    # Red de seguridad: permisos estándar de cPanel para el docroot (como el resto de sitios de la cuenta).
+    - /bin/chmod 750 $DEPLOYPATH
 
     # PHP confirmado: /usr/local/bin/php (cuenta usa PHP 8.2, symlink de cPanel).
     # Composer instalado manualmente en el home de la cuenta (el hosting no lo trae
