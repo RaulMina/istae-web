@@ -12,6 +12,7 @@ use Exception;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 
 class ChatSettingsController extends Controller
 {
@@ -47,6 +48,8 @@ class ChatSettingsController extends Controller
             return $redirect;
         }
 
+        $settings = ChatSetting::current();
+
         $request->validate([
             'bot_name' => 'required|string|max:50',
             'tooltip_text' => 'nullable|string|max:120',
@@ -54,10 +57,11 @@ class ChatSettingsController extends Controller
             'is_enabled' => 'nullable|boolean',
             'scrape_frequency_hours' => 'nullable|integer|min:24|max:720',
             'history_message_limit' => 'nullable|integer|min:2|max:30',
+            'openai_model' => ['nullable', 'string', Rule::in(array_keys($settings->modelOptions()))],
         ]);
 
-        $settings = ChatSetting::current();
         $settings->update([
+            'openai_model' => $request->input('openai_model', $settings->openai_model),
             'bot_name' => $request->input('bot_name'),
             'tooltip_text' => $request->input('tooltip_text'),
             'system_prompt' => $request->input('system_prompt'),
@@ -67,6 +71,39 @@ class ChatSettingsController extends Controller
         ]);
 
         return redirect()->route('admin.chat.index')->with('success', 'Configuración del asistente actualizada.');
+    }
+
+    public function updateApiKey(Request $request, OpenAiChatService $openAi)
+    {
+        if ($redirect = $this->denyIfNotAdmin()) {
+            return $redirect;
+        }
+
+        $request->validate([
+            'openai_api_key' => 'required|string|min:20|max:500',
+        ]);
+
+        $apiKey = trim($request->input('openai_api_key'));
+
+        if ($error = $openAi->verifyApiKey($apiKey)) {
+            return redirect()->route('admin.chat.index')->with('error', $error);
+        }
+
+        ChatSetting::current()->update(['openai_api_key' => $apiKey]);
+
+        return redirect()->route('admin.chat.index')->with('success', 'API key de OpenAI actualizada.');
+    }
+
+    public function destroyApiKey()
+    {
+        if ($redirect = $this->denyIfNotAdmin()) {
+            return $redirect;
+        }
+
+        ChatSetting::current()->update(['openai_api_key' => null]);
+
+        return redirect()->route('admin.chat.index')
+            ->with('success', 'API key del panel eliminada. Se usará OPENAI_API_KEY del .env si está definida.');
     }
 
     public function storeWebsiteSource(Request $request, WebsiteScraperService $scraper)

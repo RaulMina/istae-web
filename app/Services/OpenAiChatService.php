@@ -23,9 +23,42 @@ class OpenAiChatService
 
     public function __construct()
     {
-        $this->apiKey = (string) config('services.openai.api_key');
-        $this->model = (string) config('services.openai.model', 'gpt-4o-mini');
         $this->baseUrl = rtrim((string) config('services.openai.base_url', 'https://api.openai.com/v1'), '/');
+
+        // La key y el modelo configurados en admin/chat tienen prioridad sobre el .env.
+        try {
+            $settings = ChatSetting::current();
+            $this->apiKey = $settings->effectiveApiKey();
+            $this->model = $settings->effectiveModel();
+        } catch (\Throwable $e) {
+            // Tabla aún sin migrar o key ilegible (p. ej. APP_KEY cambiada): se usa solo el .env.
+            report($e);
+            $this->apiKey = (string) config('services.openai.api_key');
+            $this->model = (string) config('services.openai.model', 'gpt-4o-mini');
+        }
+    }
+
+    /**
+     * Comprueba contra OpenAI que la key es válida antes de guardarla.
+     * Devuelve null si es válida o un mensaje de error en caso contrario (nunca incluye la key).
+     */
+    public function verifyApiKey(string $apiKey): ?string
+    {
+        try {
+            $response = Http::withToken($apiKey)->timeout(15)->get("{$this->baseUrl}/models");
+        } catch (\Throwable $e) {
+            return 'No se pudo contactar a OpenAI para verificar la key.';
+        }
+
+        if ($response->status() === 401) {
+            return 'OpenAI rechazó la API key (no es válida o fue revocada).';
+        }
+
+        if ($response->failed()) {
+            return 'OpenAI respondió con un error al verificar la key (HTTP '.$response->status().').';
+        }
+
+        return null;
     }
 
     public function isConfigured(): bool
