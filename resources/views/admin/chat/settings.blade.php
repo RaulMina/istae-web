@@ -11,6 +11,9 @@
     @if(session('error'))
         <div class="alert alert-danger">{{ session('error') }}</div>
     @endif
+    @if($errors->any())
+        <div class="alert alert-danger">{{ $errors->first() }}</div>
+    @endif
 
     <div class="card mb-4 shadow-sm">
         <div class="card-header bg-white py-3">
@@ -72,6 +75,16 @@
                             <small class="text-muted">Cuántos mensajes recientes recuerda el asistente en cada turno. Más memoria = más contexto, pero también más costo por mensaje.</small>
                         </div>
 
+                        <div class="mb-3">
+                            <label class="form-label fw-bold">Modelo de OpenAI</label>
+                            <select name="openai_model" class="form-select" style="max-width: 360px;">
+                                @foreach($settings->modelOptions() as $value => $label)
+                                    <option value="{{ $value }}" {{ $settings->effectiveModel() === $value ? 'selected' : '' }}>{{ $label }}</option>
+                                @endforeach
+                            </select>
+                            <small class="text-muted">Los modelos más grandes responden mejor, pero cuestan más por mensaje.</small>
+                        </div>
+
                         <div class="d-flex justify-content-between align-items-center">
                             <div class="form-check form-switch mb-0">
                                 <input class="form-check-input" type="checkbox" id="is_enabled" name="is_enabled" value="1"
@@ -93,6 +106,62 @@
                     </script>
                 </div>
             </div>
+        </div>
+    </div>
+
+    <div class="card mb-4 shadow-sm">
+        <div class="card-header bg-white py-3">
+            <h3 class="m-0 text-primary">
+                <i class="bi bi-key me-2"></i>API key de OpenAI
+            </h3>
+        </div>
+        <div class="card-body">
+            <div class="mb-3">
+                <span class="fw-bold me-2">Key actual:</span>
+                @if($settings->maskedApiKey())
+                    <code>{{ $settings->maskedApiKey() }}</code>
+                    <span class="badge bg-secondary ms-2">
+                        {{ $settings->apiKeySource() === 'panel' ? 'Configurada desde este panel' : 'Tomada del .env (OPENAI_API_KEY)' }}
+                    </span>
+                @else
+                    <span class="badge bg-danger">No configurada: el chat no funcionará</span>
+                @endif
+            </div>
+
+            <form action="{{ route('admin.chat.api-key.update') }}" method="POST" id="chat-api-key-form" autocomplete="off">
+                @csrf
+                <div class="d-flex gap-2" style="max-width: 640px;">
+                    <input type="password" name="openai_api_key" class="form-control" required minlength="20" maxlength="500"
+                           autocomplete="new-password" spellcheck="false" placeholder="Pega aquí la nueva key (sk-...)">
+                    <button type="submit" id="chat-api-key-save-btn" class="btn btn-primary text-nowrap">
+                        <i class="bi bi-check-circle me-1"></i> Guardar key
+                    </button>
+                </div>
+            </form>
+            <small class="text-muted d-block mt-2">
+                La key se verifica con OpenAI antes de guardarse y se almacena cifrada. Nunca se vuelve a mostrar completa.
+                Si la nueva key pertenece a otro proyecto de OpenAI, la base de conocimiento actual dejará de estar accesible
+                y habrá que volver a cargar los archivos.
+            </small>
+
+            @if($settings->apiKeySource() === 'panel')
+                <form action="{{ route('admin.chat.api-key.destroy') }}" method="POST" class="mt-3"
+                      data-confirm="¿Eliminar la API key guardada en el panel? Se usará OPENAI_API_KEY del .env si está definida.">
+                    @csrf
+                    @method('DELETE')
+                    <button type="submit" class="btn btn-outline-danger btn-sm">
+                        <i class="bi bi-trash me-1"></i> Quitar key del panel
+                    </button>
+                </form>
+            @endif
+
+            <script>
+            document.getElementById('chat-api-key-form').addEventListener('submit', () => {
+                const btn = document.getElementById('chat-api-key-save-btn');
+                btn.disabled = true;
+                btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Verificando...';
+            });
+            </script>
         </div>
     </div>
 

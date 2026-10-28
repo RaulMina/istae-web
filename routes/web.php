@@ -121,6 +121,8 @@ Route::get('/chat/knowledge/{knowledgeFile}/view', [ChatController::class, 'view
 Route::prefix('admin/chat')->name('admin.chat.')->group(function () {
     Route::get('/', [ChatSettingsController::class, 'index'])->name('index');
     Route::post('/settings', [ChatSettingsController::class, 'updateSettings'])->name('settings');
+    Route::post('/api-key', [ChatSettingsController::class, 'updateApiKey'])->middleware('throttle:10,1')->name('api-key.update');
+    Route::delete('/api-key', [ChatSettingsController::class, 'destroyApiKey'])->name('api-key.destroy');
     Route::post('/website', [ChatSettingsController::class, 'storeWebsiteSource'])->name('website.store');
     Route::post('/website/bulk-destroy', [ChatSettingsController::class, 'bulkDestroyWebsiteSources'])->name('website.bulk-destroy');
     Route::post('/website/bulk-refresh', [ChatSettingsController::class, 'bulkRefreshWebsiteSources'])->name('website.bulk-refresh');
